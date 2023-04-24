@@ -6,6 +6,7 @@ from UnityPy.classes import Texture2D, Sprite
 from UnityPy.enums import ClassIDType
 import UnityPy
 import json
+import math
 
 
 def crop_box_x(image_size: Tuple[int, int], start_position: int, end_position: Optional[int]) -> Tuple[int, int, int, int]:
@@ -61,6 +62,33 @@ def asset_image_objects(game_data: Path) -> Iterator[Tuple[ClassIDType, Union[Te
             yield (obj.type, cast(Texture2D, obj.read()))
         elif obj.type == ClassIDType.Sprite:
             yield (obj.type, cast(Sprite, obj.read()))
+
+
+def game_icons(game_data: Path, icons_config: Dict[str, Tuple[int, int]]) -> Tuple[Image.Image, Dict[str, str]]:
+    for _, data in asset_image_objects(game_data):
+        if data.name == 'BlockPreview':
+            img = data.image
+            icons = [[icon for icon in split_image(icons_row, projection_x, crop_box_x)] for icons_row in split_image(img, projection_y, crop_box_y)]
+            icons.reverse()
+            size = 64 * math.ceil(math.sqrt(len(set(icons_config.values()))))
+            icons_out = Image.new(img.mode, (size, size))
+            game_icons = dict()
+            x_offset = 0
+            y_offset = 0
+            for icon_position in icons_config.values():
+                if icon_position in game_icons:
+                    continue
+                game_icons[icon_position] = f'-{x_offset}px -{y_offset}px'
+                selected_icon = icons[icon_position[0]][icon_position[1]]
+                icons_out.paste(selected_icon, (x_offset + math.floor((64-selected_icon.size[0])/2), y_offset + math.floor((64-selected_icon.size[1])/2)))
+                x_offset += 64
+                if x_offset >= size:
+                    x_offset = 0
+                    y_offset += 64
+            return icons_out, {icon_name: game_icons[icon_position] for icon_name, icon_position in icons_config.items()}
+    else:
+        return Image.new('RGBA', (1, 1)), dict()
+
 
 def main():
     # Parse command line arguments

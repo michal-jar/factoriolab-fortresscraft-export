@@ -2,7 +2,8 @@ from genericpath import isfile
 import json
 from argparse import ArgumentParser
 from pathlib import Path
-from typing import Dict, List, Tuple, Union, Iterator
+from typing import Dict, List, Tuple, Union, Iterator, cast
+from assets import game_icons
 import xml.etree.ElementTree as ET
 import re
 
@@ -92,6 +93,13 @@ def extract_smelter_recipes(game_data: Path, id_converter: IdConverter, all_item
         yield receip, used_items
 
 
+def icons_configuration() -> Dict[str, Tuple[int, int]]:
+    icons_config_path = Path(__file__).parent / 'icons_fill.json'
+    with icons_config_path.open() as icons_config_file:
+        icons_config_json = json.load(icons_config_file)
+    return {icon_name: (position['row'], position['col']) for icon_name, position in icons_config_json['icons'].items()}
+
+
 def main():
     # Parse command line arguments
     parser = ArgumentParser()
@@ -123,10 +131,24 @@ def main():
         for item_id in items:
             used_items[item_id] = all_items[item_id]
 
+    icons_config = icons_configuration()
+    icons_image, icons_positions = game_icons(game_data.parent.parent / 'FC_Linux_Universal_Data', icons_config)
+    icons_image.save(Path(__file__).parent / 'icons.png')
+    factoriolab_icons = {item: {"row": 19, "col": 15} for item in categories}
+    factoriolab_icons.update({item: {"row": 19, "col": 15} for item in used_items.keys()})
+    factoriolab_icons = {
+        "no-icon": {
+            "row": 19,
+            "col": 15
+        },
+        "icons": factoriolab_icons
+    }
+    write(Path(__file__).parent / 'icons.json', factoriolab_icons, True)
+
     factoriolab_data = {
         "version": { "FortressCraft Evolved": "0.1" },
         "categories": list(categories.values()),
-        "icons": [{"id": item, "position": "0px 0px"} for item in categories] + [{"id": item, "position": "0px 0px"} for item in used_items.keys()],
+        "icons": [{"id": item, "position": icons_positions[item]} for item in categories] + [{"id": item, "position": icons_positions[item]} for item in used_items.keys()],
         "items": list(used_items.values()),
         "recipes": list(data_recipes.values())
     }
