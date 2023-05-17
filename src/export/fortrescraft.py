@@ -83,8 +83,8 @@ def extract_items(game_data: Path, id_converter: IdConverter) -> Iterator[Tuple[
         yield key.lower() if key else object_id, object, category
 
 
-def extract_smelter_recipes(game_data: Path, all_items: Dict, ore_smelter: Dict) -> Iterator[Tuple[Dict, List]]:
-    for craft in ET.parse(game_data / 'SmelterRecipes.xml').getroot():
+def extract_recipes(receipe_set: Path, receipe_set_id: str, factory_id: str, machine_name: str, all_items: Dict) -> Iterator[Tuple[Dict, List]]:
+    for craft in ET.parse(receipe_set).getroot():
         used_items = list()
         craft_cost = dict()
         for cost in craft.findall("Costs/CraftCost"):
@@ -98,45 +98,18 @@ def extract_smelter_recipes(game_data: Path, all_items: Dict, ore_smelter: Dict)
             object = all_items[key.lower()]
             used_items.append(object)
             receip = {
-                "id": f'{object["id"]}-smelter',
-                "name": f'{object["name"]} (smelter)',
+                "id": f'{object["id"]}-{receipe_set_id}',
+                "name": f'{object["name"]} ({machine_name})',
                 "cost": 1000,
                 "time": 2,
                 "in": craft_cost,
                 "out": { object["id"]: int(craft.findtext("CraftedAmount", default=0)) },
-                "producers": [ore_smelter["id"]],
+                "producers": [factory_id],
                 "row": 0,
                 "category": object["category"]
             }
             yield receip, used_items
 
-
-def extract_crafting_recipes(game_data: Path, all_items: Dict, crafter: Dict) -> Iterator[Tuple[Dict, List]]:
-    for craft in ET.parse(game_data / 'ManufacturerRecipes.xml').getroot():
-        used_items = list()
-        craft_cost = dict()
-        for cost in craft.findall("Costs/CraftCost"):
-            key = cost.findtext("Key")
-            if key:
-                object = all_items[key.lower()]
-                used_items.append(object)
-                craft_cost[object["id"]] = int(cost.findtext("Amount", default=0))
-        key = craft.findtext("CraftedKey")
-        if key:
-            object = all_items[key.lower()]
-            used_items.append(object)
-            receip = {
-                "id": f'{object["id"]}-craft',
-                "name": f'{object["name"]} (craft)',
-                "cost": 1000,
-                "time": 2,
-                "in": craft_cost,
-                "out": { object["id"]: int(craft.findtext("CraftedAmount", default=0)) },
-                "producers": [crafter["id"]],
-                "row": 0,
-                "category": object["category"]
-            }
-            yield receip, used_items
 
 def icons_configuration() -> Dict[str, Tuple[int, int]]:
     icons_config_path = Path(__file__).parent / 'icons_fill.json'
@@ -166,22 +139,28 @@ def main():
         categories[category["id"]] = category
 
     used_items = dict()
-    ore_smelter = all_items["oresmelter"]
-    ore_smelter["factory"] = { "speed": 1, "type": "electric", "usage": 4000 }
-    used_items[ore_smelter["id"]] = ore_smelter
-    crafter = all_items["manufacturingplant"]
-    crafter["factory"] = { "speed": 1, "type": "electric", "usage": 4000 }
-    used_items[crafter["id"]] = crafter
-
     data_recipes = dict()
-    for receip, items in extract_smelter_recipes(game_data, all_items, ore_smelter):
-        data_recipes[receip["id"]] = receip
-        for object in items:
-            used_items[object["id"]] = object
-    for receip, items in extract_crafting_recipes(game_data, all_items, crafter):
-        data_recipes[receip["id"]] = receip
-        for object in items:
-            used_items[object["id"]] = object
+    factories = dict()
+
+    for receipe_set in ET.parse(game_data / 'RecipeSets.xml').getroot():
+        factory_id = receipe_set.findtext("MachineKey")
+        if factory_id:
+            factory_id = factory_id.lower()
+            factory = all_items[factory_id]
+            factory["factory"] = { "speed": 1, "type": "electric", "usage": 4000 }
+            factories[factory["id"]] = factory
+            receipe_set_id = receipe_set.findtext("Id", factory["id"])
+            receipe_set_id = id_converter.create_object_id(receipe_set_id)
+            machine_name = cast(str, receipe_set.findtext("Name", factory["name"]))
+            receipe_file = receipe_set.findtext("FileName")
+            if receipe_file:
+                used_items[factory["id"]] = factory
+                receipe_file = game_data / receipe_file
+                if receipe_file.exists() and receipe_file.is_file():
+                    for receip, items in extract_recipes(receipe_file, receipe_set_id, factory["id"], machine_name, all_items):
+                        data_recipes[receip["id"]] = receip
+                        for object in items:
+                            used_items[object["id"]] = object
 
     icons_config = icons_configuration()
     icons_image, icons_positions = game_icons(game_data.parent.parent / 'FC_Linux_Universal_Data', icons_config)
@@ -209,7 +188,7 @@ def main():
 
     factoriolab_hash = {
         "items": list(used_items.keys()),
-        "factories": [ore_smelter["id"]],
+        "factories": list(factories.keys()),
         "recipes": list(data_recipes.keys())
     }
     write(Path(__file__).parent / 'hash.json', factoriolab_hash, True)

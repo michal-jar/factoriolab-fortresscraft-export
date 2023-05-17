@@ -15,6 +15,7 @@
     "agriculture": { "row": 19, "col": 15 },
     "ore-smelter": { "row": 4, "col": 7 },
     "manufacturing-plant": { "row": 4, "col": 3 },
+    "stamper-plant": { "row": 10, "col": 15 },
     "copper-ore": { "row": 9, "col": 6 },
     "copper-bar": { "row": 9, "col": 0 },
     "tin-ore": { "row": 12, "col": 7 },
